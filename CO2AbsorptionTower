@@ -1,0 +1,511 @@
+function AbsorptionExampleR1
+
+%This example is based on Dugas 2006 as reported in table 4
+%of Otitoju, O., Oko, E., & Wang, M. (2020). A new method 
+%for scale-up of solvent-based post-combustion carbon 
+%capture process with packed columns. International 
+%Journal of Greenhouse Gas Control, 93, 102900.
+
+%Set color to previous release color order
+co = [0 0 1;    
+    0 0.5 0;
+    1 0 0;
+    0 0 0;
+    0 0.75 0.75;
+    0.75 0 0.75;
+    0.75 0.75 0];
+set(groot,'defaultAxesColorOrder',co)
+
+data=[11 5.48 8.22
+    0.1654 0.1766 0.1841
+    47.98 46.56 59.23
+    1.05 1.05 1.03
+    0.08 0.04 0.03    
+    0.28 0.27 0.28
+    0.86 0.95 0.69];
+
+%**************************************************************************
+
+% Stage 1 - Using a constant Henrys' law coefficient
+H=6.1;
+% Seed values for K, Clmax and ka
+X0=[7896 114 0.00976];
+
+% Optimise values using analytical solution with infinite Clmax, K=K0
+Scheme='analytical';
+X=fminsearch(@MyObFun,X0,[],data,H,Scheme);
+[F,Cg_B,Cl_B]=MyObFun(X,data,H,Scheme);
+% Calibration1 displays Error, K, Clmax and ka
+Calibration1 = num2str([F X],4)  
+
+%Determine values using numerical solution with infinite Clmax, K=K0
+Scheme='numerical';
+Xinf=X;
+Xinf(2)=inf; %This sets only the Clmax as a infinite value
+[F,Cg_A,Cl_A]=MyObFun(Xinf,data,H,Scheme);
+
+%**************************************************************************
+
+% Stage 2 - Using determined Henrys' law coefficient for each case 
+%Determine K value
+m=0.03;
+[K,ka]=KestimateFun(data,m);
+num2str([K;ka],4);
+H=6.1;
+Clmax=inf;
+Scheme='analytical';
+
+% Find the results with one ka value and 3 different K0
+[Cg_C,Cl_C,z,Cga,Cgb_C,Clb,CgbM_C]=ModelFun(data,H,K,Clmax,ka,Scheme);
+%Calculate percentage error
+res=100*(Cgb_C-CgbM_C)./Cgb_C;
+%Determine mean absolute percentage error
+F=mean(abs(res));
+% Calibration2 displays Error, K0_1, K0_2, K0_3, and ka
+Calibration2 = num2str([F K ka(1)],4)
+
+%**************************************************************************
+
+% Stage 3 - Numerical Simulation Evaluation 
+% Numerical simulation deploying Langmuir isotherm 
+% functional form for Henry%s law Coefficient 
+
+%Use numerical solution with the functional form for K value
+% to estimate parameters
+Scheme='numerical';
+
+% %Optimisation using the same seed parameter X0
+% Uncomment to run the optimisation
+% X=fminsearch(@MyObFun,X0,[],data,H,Scheme);  
+
+% The optimisation converged to [K0 Clmax ka]:
+X=[7896 114 0.00976]; % Comment if running the optimisation 
+
+%Determine values for plotting
+[F,Cg,Cl,z,Cga,Cgb,Clb,CgbM]=MyObFun(X,data,H,Scheme);
+%Display objective function and parameters
+Calibration3 = num2str([F X],4)
+
+%**************************************************************************
+
+figure(1)
+clf
+subplot(2,2,1)
+hold on
+%Plot full numerical results
+plot(Cg,z,'linewidth',1)
+%Plot numerical results assuming Clmax=inf
+set(gca,'ColorOrderIndex',1)
+plot(Cg_A,z,'--')
+%Plots results from the analytical solution with Clmax=inf
+%for comparison
+set(gca,'ColorOrderIndex',1)
+plot(Cg_B,z,'.','markersize',8)
+%Plot observed Cga and Cgb values
+set(gca,'ColorOrderIndex',1)
+plot(Cga,0,'o')
+set(gca,'ColorOrderIndex',1)
+plot(Cgb,H,'o')
+%Plot modelled Cga and Cgb values
+set(gca,'ColorOrderIndex',1)
+plot(CgbM,H,'x')
+xlabel('CO_2 concentration in gas (kg m^-^3)')
+ylabel('Elevation (m)')
+legend('Column 1','Column 2','Column 3')
+box('on')
+subplot(2,2,2)
+hold on
+%Plot full numerical results
+plot(Cl,z,'linewidth',1)
+%Plot numerical results assuming Clmax=inf
+set(gca,'ColorOrderIndex',1)
+plot(Cl_A,z,'--')
+%Plots results from the analytical solution with Clmax=inf
+%for comparison
+set(gca,'ColorOrderIndex',1)
+plot(Cl_B,z,'.','markersize',8)
+%Plot observed Clb values
+set(gca,'ColorOrderIndex',1)
+plot(Clb,H,'o')
+xlabel('CO_2 concentration in liquid (kg m^-^3)')
+ylabel('Elevation (m)')
+legend('Column 1','Column 2','Column 3')
+box('on')
+subplot(2,2,3)
+CgP=logspace(-3,0);
+K0=X(1);
+Clmax=X(2);
+a=K0;
+b=a/Clmax;
+ClP=a*CgP./(1+b*CgP);
+plot(CgP,ClP,'linewidth',1)
+set(gca,'xscale','log')
+xlabel('CO_2 concentration in gas (kg m^-^3)')
+ylabel('CO_2 concentration in liquid (kg m^-^3)')
+subplot(2,2,4)
+ClP=linspace(0,Clmax);
+K=K0*(1-ClP/Clmax);
+plot(ClP,K,'linewidth',1)
+xlabel('CO_2 concentration in liquid (kg m^-^3)')
+ylabel('Henrys law coefficient, K (-)')
+
+%**************************************************************************
+
+% Stage 1 Plot - Results using a constant Henrys' law coefficient
+figure(2)
+clf
+subplot(1,2,1)
+hold on
+%Plot numerical results assuming Clmax=inf
+set(gca,'ColorOrderIndex',1)
+plot(Cg_A,z,'--')
+%Plots results from the analytical solution with Clmax=inf
+%for comparison
+set(gca,'ColorOrderIndex',1)
+plot(Cg_B,z,'.','markersize',10)
+%Plot observed Cga and Cgb values
+set(gca,'ColorOrderIndex',1)
+plot(Cga,0,'o')
+set(gca,'ColorOrderIndex',1)
+plot(Cgb,H,'o')
+xlabel('CO_2 concentration in gas (kg m^-^3)')
+ylabel('Elevation (m)')
+legend('Case 28','Case 32','Case 47')
+box('on')
+subplot(1,2,2)
+hold on
+%Plot numerical results assuming Clmax=inf
+set(gca,'ColorOrderIndex',1)
+plot(Cl_A,z,'--')
+%Plots results from the analytical solution with Clmax=inf
+%for comparison
+set(gca,'ColorOrderIndex',1)
+plot(Cl_B,z,'.','markersize',10)
+%Plot observed Clb values
+set(gca,'ColorOrderIndex',1)
+plot(Clb,H,'o')
+xlabel('CO_2 concentration in liquid (kg m^-^3)')
+ylabel('Elevation (m)')
+legend('Case 28','Case 32','Case 47')
+box('on')
+
+%**************************************************************************
+
+% Stage 2 Plot - Using determined Henrys' law coefficient for each case 
+figure(3)
+clf
+subplot(1,2,1)
+hold on
+%Plot full numerical results
+plot(Cg_C,z,'linewidth',1)
+%Plot observed Cga and Cgb values
+set(gca,'ColorOrderIndex',1)
+plot(Cga,0,'o')
+set(gca,'ColorOrderIndex',1)
+plot(Cgb_C,H,'o')
+%Plot modelled Cga and Cgb values
+set(gca,'ColorOrderIndex',1)
+plot(CgbM_C,H,'x')
+xlabel('CO_2 concentration in gas (kg m^-^3)')
+ylabel('Elevation (m)')
+legend('Case 28','Case 32','Case 47')
+box('on')
+subplot(1,2,2)
+hold on
+%Plot full numerical results
+plot(Cl_C,z,'linewidth',1)
+%Plot observed Clb values
+set(gca,'ColorOrderIndex',1)
+plot(Clb,H,'o')
+xlabel('CO_2 concentration in liquid (kg m^-^3)')
+ylabel('Elevation (m)')
+legend('Case 28','Case 32','Case 47')
+box('on')
+
+%**************************************************************************
+
+% Stage 3 Plot - Numerical Simulation Evaluation 
+figure(4)
+clf
+subplot(1,2,1)
+hold on
+%Plot full numerical results
+plot(Cg,z,'linewidth',1)
+%Plot observed Cga and Cgb values
+set(gca,'ColorOrderIndex',1)
+plot(Cga,0,'o')
+set(gca,'ColorOrderIndex',1)
+plot(Cgb,H,'o')
+%Plot modelled Cga and Cgb values
+set(gca,'ColorOrderIndex',1)
+plot(CgbM,H,'x')
+xlabel('CO_2 concentration in gas (kg m^-^3)')
+ylabel('Elevation (m)')
+legend('Case 28','Case 32','Case 47')
+box('on')
+subplot(1,2,2)
+hold on
+%Plot full numerical results
+plot(Cl,z,'linewidth',1)
+%Plot observed Clb values
+set(gca,'ColorOrderIndex',1)
+plot(Clb,H,'o')
+xlabel('CO_2 concentration in liquid (kg m^-^3)')
+ylabel('Elevation (m)')
+legend('Case 28','Case 32','Case 47')
+box('on')
+
+%**************************************************************************
+
+% Plot - Langmuir isotherm functional form for Henry's law Coefficient 
+figure(5)
+clf 
+hold on 
+ClP=linspace(0,Clmax);
+K=K0*(1-ClP/Clmax); % Equation 23 in the report 
+plot(ClP,K,'linewidth',1)
+xlabel('CO_2 concentration in liquid (kg m^-^3)')
+ylabel('Henrys law coefficient, K (-)')
+box on 
+
+%**************************************************************************
+
+
+%This data is taken from Aronu 2011 as reported in figure 6.b 
+% using the data result for 30% mass MEA at 40˚C.  
+% U. E. Aronu et al., "Solubility of CO2 in 15, 30, 45 and 60 
+% mass% MEA from 40 to 120°C and model representation using 
+% the extended UNIQUAC framework," Chemical Engineering Science,
+% vol. 66, no. 24, pp. 6393–6406, Dec. 2011, 
+% doi: 10.1016/j.ces.2011.08.042. 
+
+%CO_2 @Liquid   CO_2 @Gas 
+D=[0.1009	0.0014855
+0.2055	0.011971
+0.2495	0.021483
+0.3376	0.06613
+0.3514	0.083536
+0.3990	0.19434
+0.4165	0.29427
+0.4211	0.32781
+0.4300	0.37855
+0.4477	0.58294
+0.4642	1.0746
+0.4780	1.84340
+0.4844	2.2876
+0.49107	2.9427
+0.51651	8.9769
+0.51885	11.971];
+
+w=0.3;      %w=mmea/(mmea+mw)
+Mmea=61.08; % Molecular weight of component MEA
+Mco2=44.01; % Molecular weight of component CO_2
+Md=28.97;   % Molecular weight of component dry gas
+Mw=18.02;   % Molecular weight of component water
+rhoL=1000;  % Liquid density
+G = D(:,2); 
+L = D(:,1);
+% Convert from mol CO_2/mol MEA to kg/m3
+Lx = [Mco2.*L./Mmea./(1/w + Mco2.*L./Mmea)]*rhoL;
+
+% Plot - CO_2 concentration in the gas vs CO_2 concentration 
+% in the liquid
+figure (6)
+clf
+hold on 
+CgP=logspace(-3,1);
+K0=X(1);
+Clmax=X(2);
+a=K0;
+b=a/Clmax;
+ClP=a*CgP./(1+b*CgP); % Equation 24 in the report
+plot(CgP,ClP,'linewidth',1)
+plot(G, Lx,'--r','LineWidth',1,'Color',[0 0.5 0])
+set(gca,'xscale','log')
+xlim([-3 10])
+xlabel('CO_2 concentration in gas (kg m^-^3)')
+ylabel('CO_2 concentration in liquid (kg m^-^3)')
+legend('Current work model','Data from Aronu et. al','location','best')
+box on 
+
+%**************************************************************************
+
+function [F,Cg,Cl,z,Cga,Cgb,Clb,CgbM]=MyObFun(X,data,H,Scheme)
+X=abs(X);
+K=X(1);
+Clmax=X(2);
+ka=X(3);
+[Cg,Cl,z,Cga,Cgb,Clb,CgbM]=ModelFun(data,H,K,Clmax,ka,Scheme);
+%Calculate percentage error
+res=100*(Cgb-CgbM)./Cgb;
+%Determine mean absolute percentage error
+F=mean(abs(res));
+
+function [K,ka]=KestimateFun(data,m)
+%Determine ball-park numbers for K and ka based on m and Kya
+
+Qg=data(1,:); %Gas flow rate (m3/min)
+yAm=data(2,:); %CO2 mol fraction of gas inlet
+Tc=data(3,:); %Temperature (deg C)
+p=data(4,:); %Pressure (bar)
+Ql=data(5,:); %Gas flow rate (m3/min)
+alpha=data(6,:); %alpha=Nco2/Nmea (mol CO2/mol MEA)
+Capture=data(7,:); %CO2 capture rate
+D=0.43; %Diameter (m)
+L=6.1; %Packing height (m)
+rhoL=1000; %liquid density (kg/m3)
+w=0.3; %w=mmea/(mmea+mw)
+Kya=1.22e-2; %Mass transfer coefficient (kmol/m3/s/bar)
+
+%Molecular mass (kg/kmol)
+Mmea=61.08;
+Mco2=44.01;
+Md=28.97;
+Mw=18.02;
+%Ideal gas constant
+R=8314; %J kmol-1 K-1
+
+%Determine gas density using ideal gas law
+rhoG=p*1e5*Md/R./(Tc+273.15); %(kg/m3)
+
+A=pi*D^2/4; %Area
+G=Qg.*rhoG/60; %Gass mass rate (kg/s)
+L=Ql.*rhoL/60; %Liquid mass rate (kg/s)
+
+%Determine mass fraction in liquid at liquid inlet
+xB=Mco2/Mmea*alpha./(1/w+Mco2/Mmea*alpha);
+
+%Determine mole fraction in liquid at liquid inlet
+xBm=alpha./(alpha+1+Mmea/Mw*(1-w)/w);
+
+%Determine mass fraction yA
+yA=Md*yAm./(yAm*(Md-Mco2)+Mco2);
+
+%Determine mole flow rates
+Gm=(yA/Mco2+(1-yA)/Md).*G;
+Lm=(xB/Mco2+(1-xB)*w/Mmea+(1-xB)*(1-w)/Mw).*L;
+
+%Determine Henry's law constant
+K=Qg./Ql.*Lm./Gm./m;
+
+%Determine mass transfer coefficient
+ka=Qg./Gm*Kya./K;
+
+%**************************************************************************
+
+function [Cg,Cl,z,Cga,Cgb,Clb,CgbM]=ModelFun(data,H,K,Clmax,ka,Scheme)
+
+Qg=data(1,:);   %Gas flow rate (m3/min)
+yAm=data(2,:);  %CO2 mol fraction of gas inlet
+Tc=data(3,:);   %Temperature (deg C)
+p=data(4,:);    %Pressure (bar)
+Ql=data(5,:);   %Gas flow rate (m3/min)
+alpha=data(6,:);%alpha=Nco2/Nmea (mol CO2/mol MEA)
+Capture=data(7,:); %CO2 capture rate
+D=0.43;         %Diameter (m)
+L=6.1;          %Packing height (m)
+rhoL=1000;      %liquid density (kg/m3)
+w=0.3;          %w=mmea/(mmea+mw)
+
+%Molecular mass (kg/kmol)
+Mmea=61.08;
+Mco2=44.01;
+Md=28.97;
+Mw=18.02;
+%Ideal gas constant
+R=8314; %J kmol-1 K-1
+
+%Determine gas density using ideal gas law
+rhoG=p*1e5*Md/R./(Tc+273.15); %(kg/m3)
+
+A=pi*D^2/4; %Area
+G=Qg.*rhoG/60; %Gass mass rate (kg/s)
+L=Ql.*rhoL/60; %Liquid mass rate (kg/s)
+
+%Determine mass fraction in liquid at liquid inlet
+xB=Mco2/Mmea*alpha./(1/w+Mco2/Mmea*alpha);
+
+%Determine mole fraction in liquid at liquid inlet
+xBm=alpha./(alpha+1+Mmea/Mw*(1-w)/w);
+
+%Determine mass fraction yA
+yA=Md*yAm./(yAm*(Md-Mco2)+Mco2);
+
+%Determine mole flow rates
+Gm=(yA/Mco2+(1-yA)/Md).*G;
+Lm=(xB/Mco2+(1-xB)*w/Mmea+(1-xB)*(1-w)/Mw).*L;
+
+%Determine initial CO2 concentration in solvent
+Clb=rhoL./(1+Mmea/Mco2/w./alpha);
+
+%Determine initial CO2 concentration in waste gas
+Cga=rhoG.*yAm./(yAm+Md/Mco2*(1-yAm));
+
+%Determine outlet CO2 concentration in waste gas
+yBm=(1-Capture).*yAm; %Mol fraction
+Cgb=rhoG.*yBm./(yBm+Md/Mco2*(1-yBm));
+
+%Define points to solve for
+z=linspace(0,H,20)';
+
+
+%Determine CO2 concentrations in gas and liquid
+switch Scheme
+    case 'analytical'
+        [Cg,Cl,CgbM]=AnaSol(z,Qg,Ql,A,Cga,Clb,H,ka,K);
+    case 'numerical'
+        for j=1:numel(Cga)
+            [Cg(:,j),Cl(:,j),CgbM(1,j)]=NumSol(z,Qg(j),Ql(j),A,Cga(j),Clb(j),ka,K,Clmax);
+        end
+end
+
+%**************************************************************************
+
+function [Cg,Cl,Cgb]=AnaSol(z,Qg,Ql,A,Cga,Clb,H,ka,K)
+%The analytical solution for constant K
+%Determine lambda
+lambda=A*ka.*(K./Qg-1./Ql);
+%Use analytical solution
+eH=exp(-lambda.*H);
+eZ=exp(-lambda.*z);
+Cg=(Ql.*Clb-Qg.*eH.*Cga+Ql.*(K.*Cga-Clb).*eZ)./(Ql.*K-Qg.*eH);
+Cl=(K.*Ql.*Clb-K.*Qg.*eH.*Cga+Qg.*(K.*Cga-Clb).*eZ)./(Ql.*K-Qg.*eH);
+Cgb=(Ql.*Clb-Qg.*eH.*Cga+Ql.*(K.*Cga-Clb).*eH)./(Ql.*K-Qg.*eH);
+
+%**************************************************************************
+
+function [Cg,Cl,Cgb]=NumSol(z,Qg,Ql,A,Cga,Clb,ka,K,Clmax)
+%The numerical scheme
+%Define inital guess
+zMESH=linspace(z(1),z(end),5);
+solinit=bvpinit(zMESH,[Cga;Clb]);
+
+%Define Jacobian matrix
+opts=bvpset('FJacobian',@jac);
+%Solve problem
+sol=bvp4c(@bvpfcn,@bcfcn,solinit,opts,Qg,Ql,A,ka,K,Cga,Clb,Clmax);
+%Extract solution variables
+y=deval(sol,z);
+Cg=y(1,:);
+Cl=y(2,:);
+%Get CO2 concentration at gas outlet
+Cgb=Cg(end);
+
+function dydx=bvpfcn(x,y,Qg,Ql,A,ka,K0,Cga,Clb,Clmax)
+%Define differential equation to be solved
+%Note that y(1)=Cg and y(2)=Cl
+Cl=y(2);
+K=Kfun(Cl,K0,Clmax);
+dydx=-A*ka*(K*y(1)-y(2))*[1/Qg; 1/Ql];
+
+function res = bcfcn(ya,yb,Qg,Ql,A,ka,K,Cga,Clb,Clmax)
+%Set boundary conditions
+res=[ya(1)-Cga; yb(2)-Clb]; 
+function dfdy = jac(x,y,Qg,Ql,A,ka,K0,Cga,Clb,Clmax)       
+%Jacobian matrix
+%Note that y(1)=Cg and y(2)=Cl
+Cl=y(2);
+K=Kfun(Cl,K0,Clmax);
+dfdy=A*ka*[-K/Qg 1/Qg; -K/Ql 1/Ql];
+function K=Kfun(Cl,K0,Clmax)
+K=K0*(1-Cl/Clmax);
